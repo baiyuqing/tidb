@@ -16,23 +16,57 @@ package distsql
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/pingcap/errors"
 	"github.com/pingcap/tidb/kv"
 	"github.com/pingcap/tidb/metrics"
+	"github.com/pingcap/tidb/quota"
 	"github.com/pingcap/tidb/sessionctx"
 	"github.com/pingcap/tidb/statistics"
 	"github.com/pingcap/tidb/types"
+
+	"github.com/pingcap/parser/mysql"
+	"github.com/pingcap/parser/terror"
 )
 
 // XAPI error codes.
 const (
-	codeInvalidResp = 1
+	codeInvalidResp      = 1
+	codeUserLimitReached = mysql.ErrUserLimitReached
 )
+
+var (
+	errUserLimitReached = terror.ClassServer.New(codeUserLimitReached, mysql.MySQLErrName[mysql.ErrUserLimitReached])
+)
+
+// Throttle based on user's quota config.
+func throttleLimit(sctx sessionctx.Context) (throttled bool, user string, resource quota.ThrottleType, cvalue int64) {
+	// System query.
+	if sctx.GetSessionVars().ConnectionID == 0 {
+		return
+	}
+	connid := sctx.GetSessionVars().ConnectionID
+	fmt.Println("Before throttle:", connid, time.Now())
+	quotaManager := quota.GetQuotaManager(sctx)
+	err := quotaManager.CheckQuotaWithUser(sctx, "", 0, quota.READ)
+	if err != nil {
+		errType := err.(quota.ThrottlingLimitedError)
+		user = sctx.GetSessionVars().User.Username
+		resource = errType.Throttle
+		cvalue = errType.Current
+		throttled = true
+	}
+	fmt.Println("End throttle:", connid, time.Now())
+	return
+}
 
 // Select sends a DAG request, returns SelectResult.
 // In kvReq, KeyRanges is required, Concurrency/KeepOrder/Desc/IsolationLevel/Priority are optional.
 func Select(ctx context.Context, sctx sessionctx.Context, kvReq *kv.Request, fieldTypes []*types.FieldType, fb *statistics.QueryFeedback) (SelectResult, error) {
+	if throttled, user, resource, cvalue := throttleLimit(sctx); throttled {
+		return nil, errUserLimitReached.FastGenByArgs(user, resource, cvalue)
+	}
 	// For testing purpose.
 	if hook := ctx.Value("CheckSelectRequestHook"); hook != nil {
 		hook.(func(*kv.Request))(kvReq)

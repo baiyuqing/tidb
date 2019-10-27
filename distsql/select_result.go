@@ -22,6 +22,7 @@ import (
 	"github.com/pingcap/parser/terror"
 	"github.com/pingcap/tidb/kv"
 	"github.com/pingcap/tidb/metrics"
+	"github.com/pingcap/tidb/quota"
 	"github.com/pingcap/tidb/sessionctx"
 	"github.com/pingcap/tidb/statistics"
 	"github.com/pingcap/tidb/types"
@@ -85,6 +86,19 @@ func (r *selectResult) Fetch(ctx context.Context) {
 	go r.fetch(ctx)
 }
 
+// Handle quota used in this function.
+func (r *selectResult) handleQuota(selectResp interface{}) {
+	// Skip system query, no username.
+	if r.ctx.GetSessionVars().ConnectionID == 0 {
+		return
+	}
+	quotaOperation := quota.GetQuotaManager(r.ctx).GetQuotaOperation(r.ctx)
+	if quotaOperation != nil {
+		quotaOperation.AddReadResult(selectResp)
+		quotaOperation.Close()
+	}
+}
+
 func (r *selectResult) fetch(ctx context.Context) {
 	startTime := time.Now()
 	defer func() {
@@ -109,6 +123,7 @@ func (r *selectResult) fetch(ctx context.Context) {
 		} else {
 			result.result = resultSubset
 			r.memConsume(int64(resultSubset.MemSize()))
+			r.handleQuota(resultSubset)
 		}
 
 		select {
@@ -180,6 +195,7 @@ func (r *selectResult) getSelectResp() error {
 		if err != nil {
 			return errors.Trace(err)
 		}
+
 		r.selectRespSize = r.selectResp.Size()
 		r.memConsume(int64(r.selectRespSize))
 		if err := r.selectResp.Error; err != nil {

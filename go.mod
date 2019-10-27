@@ -57,6 +57,7 @@ require (
 	github.com/shurcooL/vfsgen v0.0.0-20181020040650-a97a25d856ca // indirect
 	github.com/sirupsen/logrus v1.2.0
 	github.com/spaolacci/murmur3 v0.0.0-20180118202830-f09979ecbc72
+	github.com/spf13/cast v1.3.0
 	github.com/struCoder/pidusage v0.1.2
 	github.com/tiancaiamao/appdash v0.0.0-20181126055449-889f96f722a2
 	github.com/twinj/uuid v1.0.0
@@ -77,3 +78,6 @@ require (
 	sourcegraph.com/sourcegraph/appdash v0.0.0-20180531100431-4c381bd170b4
 	sourcegraph.com/sourcegraph/appdash-data v0.0.0-20151005221446-73f23eafcf67
 )
+
+replace github.com/pingcap/kvproto v0.0.0-20190918085321-44e3817e1f18 => github.com/baiyuqing/kvproto v0.0.0-20191026095955-84f9208b85e4
+

@@ -38,6 +38,10 @@ type ExecDetails struct {
 	RequestCount  int
 	TotalKeys     int64
 	ProcessedKeys int64
+	InBlock       int64
+	OutBlock      int64
+	UserTime      int64
+	SysTime       int64
 	CommitDetail  *CommitDetails
 }
 
@@ -72,11 +76,15 @@ const (
 	TotalKeysStr = "Total_keys"
 	// ProcessKeysStr means the total processed keys.
 	ProcessKeysStr = "Process_keys"
+	// InBlockStr means the total read blocks.
+	InBlockStr = "In_blocks"
+	// OutBlockStr means the total write blocks.
+	OutBlockStr = "Out_blocks"
 )
 
 // String implements the fmt.Stringer interface.
 func (d ExecDetails) String() string {
-	parts := make([]string, 0, 6)
+	parts := make([]string, 0, 8)
 	if d.ProcessTime > 0 {
 		parts = append(parts, ProcessTimeStr+": "+strconv.FormatFloat(d.ProcessTime.Seconds(), 'f', -1, 64))
 	}
@@ -95,6 +103,13 @@ func (d ExecDetails) String() string {
 	if d.ProcessedKeys > 0 {
 		parts = append(parts, ProcessKeysStr+": "+strconv.FormatInt(d.ProcessedKeys, 10))
 	}
+	if d.InBlock > 0 {
+		parts = append(parts, InBlockStr+": "+strconv.FormatInt(d.InBlock, 10))
+	}
+	if d.OutBlock > 0 {
+		parts = append(parts, OutBlockStr+": "+strconv.FormatInt(d.OutBlock, 10))
+	}
+
 	commitDetails := d.CommitDetail
 	if commitDetails != nil {
 		if commitDetails.PrewriteTime > 0 {
@@ -159,6 +174,12 @@ func (d ExecDetails) ToZapFields() (fields []zap.Field) {
 	}
 	if d.ProcessedKeys > 0 {
 		fields = append(fields, zap.String(strings.ToLower(ProcessKeysStr), strconv.FormatInt(d.ProcessedKeys, 10)))
+	}
+	if d.InBlock > 0 {
+		fields = append(fields, zap.String(strings.ToLower(InBlockStr), strconv.FormatInt(d.InBlock, 10)))
+	}
+	if d.OutBlock > 0 {
+		fields = append(fields, zap.String(strings.ToLower(OutBlockStr), strconv.FormatInt(d.OutBlock, 10)))
 	}
 	commitDetails := d.CommitDetail
 	if commitDetails != nil {

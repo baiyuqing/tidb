@@ -433,6 +433,10 @@ func (sc *StatementContext) MergeExecDetails(details *execdetails.ExecDetails, c
 		sc.mu.execDetails.RequestCount++
 		sc.mu.execDetails.TotalKeys += details.TotalKeys
 		sc.mu.execDetails.ProcessedKeys += details.ProcessedKeys
+		sc.mu.execDetails.InBlock += details.InBlock
+		sc.mu.execDetails.OutBlock += details.OutBlock
+		sc.mu.execDetails.UserTime += details.UserTime
+		sc.mu.execDetails.SysTime += details.SysTime
 		sc.mu.allExecDetails = append(sc.mu.allExecDetails, details)
 	}
 	sc.mu.execDetails.CommitDetail = commitDetails
