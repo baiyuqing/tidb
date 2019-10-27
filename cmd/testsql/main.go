@@ -39,6 +39,7 @@ func init() {
 
 	latencyC = make(chan float64, 10240)
 	throughputC = make(chan int, 10240)
+	quitC = make(chan struct{})
 
 }
 
@@ -88,6 +89,8 @@ func handleChannel() {
 	signal.Notify(signalChan, os.Interrupt)
 	go func() {
 		<-signalChan
+
+		close(quitC)
 		printStatistics()
 		os.Exit(0)
 	}()
@@ -102,7 +105,8 @@ func addLatency(d float64) {
 }
 
 func showStatitistic() {
-	ticker := time.Tick(10 * time.Second)
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
 	var total, last int
 	var totalElapsed, lastElapsed float64
 	for {
@@ -114,14 +118,16 @@ func showStatitistic() {
 			}
 		case elapsed := <-latencyC:
 			totalElapsed += elapsed
-
-		case <-ticker:
+		case <-quitC:
+			fmt.Println("herer")
+			return
+		case <-ticker.C:
 			qps := float64(total-last) / 10.0
 			avgLatency := (totalElapsed - lastElapsed) / 10.0
 			last = total
 			lastElapsed = totalElapsed
 			fmt.Printf("%0.2f\tQPS, total: %v\n", qps, total)
-			fmt.Printf("%0.2f\tAvgLatency per sec, total: %v\n", totalElapsed, avgLatency)
+			fmt.Printf("%0.2f\tAvgLatency per sec, total: %v\n", avgLatency, totalElapsed)
 		}
 	}
 }
@@ -148,6 +154,6 @@ func main() {
 			go execute(&wg)
 		}
 		wg.Wait()
-		time.Sleep(1 * time.Second)
+		// time.Sleep(1 * time.Second)
 	}
 }
