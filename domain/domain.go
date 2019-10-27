@@ -39,6 +39,8 @@ import (
 	"github.com/pingcap/tidb/metrics"
 	"github.com/pingcap/tidb/owner"
 	"github.com/pingcap/tidb/privilege/privileges"
+	"github.com/pingcap/tidb/quota"
+
 	"github.com/pingcap/tidb/sessionctx"
 	"github.com/pingcap/tidb/sessionctx/variable"
 	"github.com/pingcap/tidb/statistics/handle"
@@ -58,6 +60,7 @@ type Domain struct {
 	store                kv.Storage
 	infoHandle           *infoschema.Handle
 	privHandle           *privileges.Handle
+	quotaHandle          *quota.Handle
 	bindHandle           *bindinfo.BindHandle
 	statsHandle          unsafe.Pointer
 	statsLease           time.Duration
@@ -783,6 +786,69 @@ func (do *Domain) LoadPrivilegeLoop(ctx sessionctx.Context) error {
 // PrivilegeHandle returns the MySQLPrivilege.
 func (do *Domain) PrivilegeHandle() *privileges.Handle {
 	return do.privHandle
+}
+
+// LoadPrivilegeLoop create a goroutine loads privilege tables in a loop, it
+// should be called only once in BootstrapSession.
+func (do *Domain) LoadQuotaLoop(ctx sessionctx.Context) error {
+	ctx.GetSessionVars().InRestrictedSQL = true
+
+	do.quotaHandle = quota.NewHandle()
+	err := do.quotaHandle.Update(ctx)
+	if err != nil {
+		return err
+	}
+	duration := 10 * time.Second
+
+	//var watchCh clientv3.WatchChan
+	//
+	//if do.etcdClient != nil {
+	//	watchCh = do.etcdClient.Watch(context.Background(), privilegeKey)
+	//	duration = 10 * time.Minute
+	//}
+
+
+	do.wg.Add(1)
+	go func() {
+		defer do.wg.Done()
+		defer recoverInDomain("loadQuotaInLoop", false)
+		// var count int
+		for {
+			// ok := true
+			select {
+			case <-do.exit:
+				return
+			// case _, ok = <-watchCh:
+			case <-time.After(duration):
+			}
+			//if !ok {
+			//	logutil.Logger(context.Background()).Error("load privilege loop watch channel closed")
+			//	watchCh = do.etcdClient.Watch(context.Background(), privilegeKey)
+			//	count++
+			//	if count > 10 {
+			//		time.Sleep(time.Duration(count) * time.Second)
+			//	}
+			//	continue
+			//}
+
+			// count = 0
+			err := do.quotaHandle.Update(ctx)
+			// metrics.LoadPrivilegeCounter.WithLabelValues(metrics.RetLabel(err)).Inc()
+			if err != nil {
+				logutil.Logger(context.Background()).Error("load quota failed", zap.Error(err))
+			} else {
+				logutil.Logger(context.Background()).Debug("reload quota success")
+			}
+		}
+	}()
+	return nil
+}
+
+
+
+// QuotaHandle returns QuotaManager
+func (do *Domain) QuotaHandle() *quota.Handle {
+	return do.quotaHandle
 }
 
 // BindHandle returns domain's bindHandle.

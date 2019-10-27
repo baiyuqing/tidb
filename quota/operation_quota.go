@@ -76,6 +76,8 @@ func NewDefaultOperationQuota(limiters ...QuotaLimiter) *DefaultOperationQuota {
 }
 
 func (o *DefaultOperationQuota) CheckQuota(operReq *OperationReq) error {
+	o.Lock()
+	defer o.Unlock()
 	// o.writeConsumed = estimateConsume(WRITE, , 100)
 	// o.readConsumed = estimateConsume(READ, numReads, 100)
 
