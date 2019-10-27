@@ -52,6 +52,8 @@ import (
 	"github.com/pingcap/tidb/plugin"
 	"github.com/pingcap/tidb/privilege"
 	"github.com/pingcap/tidb/privilege/privileges"
+	"github.com/pingcap/tidb/quota"
+
 	"github.com/pingcap/tidb/sessionctx"
 	"github.com/pingcap/tidb/sessionctx/binloginfo"
 	"github.com/pingcap/tidb/sessionctx/stmtctx"
@@ -1416,6 +1418,11 @@ func CreateSession(store kv.Storage) (Session, error) {
 	}
 	privilege.BindPrivilegeManager(s, pm)
 
+	qm := &quota.QuotaManager{
+		Handle: do.QuotaHandle(),
+	}
+	quota.BindQuotaManager(s, qm)
+
 	sessionBindHandle := bindinfo.NewSessionBindHandle(s.parser)
 	s.SetValue(bindinfo.SessionBindInfoKeyType, sessionBindHandle)
 	// Add stats collector, and it will be freed by background stats worker
@@ -1490,6 +1497,10 @@ func BootstrapSession(store kv.Storage) (*domain.Domain, error) {
 		if err != nil {
 			return nil, err
 		}
+	}
+	err = dom.LoadQuotaLoop(se)
+	if err != nil {
+		return nil, err
 	}
 
 	if len(cfg.Plugin.Load) > 0 {
@@ -1609,7 +1620,7 @@ func createSessionWithDomain(store kv.Storage, dom *domain.Domain) (*session, er
 
 const (
 	notBootstrapped         = 0
-	currentBootstrapVersion = 35
+	currentBootstrapVersion = 36
 )
 
 func getStoreBootstrapVersion(store kv.Storage) int64 {

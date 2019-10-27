@@ -269,6 +269,15 @@ const (
 	CreateOptRuleBlacklist = `CREATE TABLE IF NOT EXISTS mysql.opt_rule_blacklist (
 		name char(100) NOT NULL
 	);`
+
+	// CreateDBQuotaTable is the SQL statement creates DB scope quota table in system db.
+	CreateDBQuotaTable = `CREATE TABLE if not exists mysql.quota (
+		user_name	CHAR(32),
+		table_name	CHAR(64),
+		quota_op tinyint(2) NOT NULL,
+		trottle_type CHAR(32) NOT NULL,
+		quota_limit bigint(64) NOT NULL,
+		PRIMARY KEY (user_name, table_name, quota_op, trottle_type));`
 )
 
 // bootstrap initiates system DB for a store.
@@ -349,6 +358,7 @@ const (
 	version33 = 33
 	version34 = 34
 	version35 = 35
+	version36 = 36
 )
 
 func checkBootstrapped(s Session) (bool, error) {
@@ -546,6 +556,10 @@ func upgrade(s Session) {
 
 	if ver < version35 {
 		upgradeToVer35(s)
+	}
+	
+	if ver < version36 {
+		upgradeToVer36(s)
 	}
 
 	updateBootstrapVer(s)
@@ -864,6 +878,10 @@ func upgradeToVer35(s Session) {
 	mustExecute(s, sql)
 }
 
+func upgradeToVer36(s Session) {
+	mustExecute(s, CreateDBQuotaTable)
+}
+
 // updateBootstrapVer updates bootstrap version variable in mysql.TiDB table.
 func updateBootstrapVer(s Session) {
 	// Update bootstrap version.
@@ -926,6 +944,8 @@ func doDDLWorks(s Session) {
 	mustExecute(s, CreateExprPushdownBlacklist)
 	// Create opt_rule_blacklist table.
 	mustExecute(s, CreateOptRuleBlacklist)
+	// Create quota table.
+	mustExecute(s, CreateDBQuotaTable)
 }
 
 // doDMLWorks executes DML statements in bootstrap stage.
