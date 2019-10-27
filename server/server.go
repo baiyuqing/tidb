@@ -623,6 +623,7 @@ const (
 	codeNotAllowedCommand   = 1148
 	codeAccessDenied        = mysql.ErrAccessDenied
 	codeMaxExecTimeExceeded = mysql.ErrMaxExecTimeExceeded
+	codeUserLimitReached    = mysql.ErrUserLimitReached
 )
 
 func init() {
@@ -630,6 +631,7 @@ func init() {
 		codeNotAllowedCommand:   mysql.ErrNotAllowedCommand,
 		codeAccessDenied:        mysql.ErrAccessDenied,
 		codeMaxExecTimeExceeded: mysql.ErrMaxExecTimeExceeded,
+		codeUserLimitReached:    mysql.ErrUserLimitReached,
 	}
 	terror.ErrClassToMySQLCodes[terror.ClassServer] = serverMySQLErrCodes
 }
