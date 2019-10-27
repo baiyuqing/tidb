@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"sync"
@@ -12,16 +13,34 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
-var addr = flag.String("addr", "localhost:3306/test", "mysql addr")
-var proc = flag.Int("proc", 10, "proc number")
-var sqls = flag.String("sql", "select * from test", "sql to execute")
+var (
+	addr string
+	proc int
+	sqls string
 
-var max float64
-var num int
-var timesum float64
-var limited int
+	max     float64
+	num     int
+	timesum float64
+	limited int
+	l       sync.Mutex
 
-var l sync.Mutex
+	latencyC    chan float64
+	throughputC chan int
+	quitC       chan struct{}
+
+	logger *log.Logger
+)
+
+func init() {
+	flag.StringVar(&addr, "addr", "localhost:3306/test", "mysql addr")
+	flag.IntVar(&proc, "proc", 10, "proc number")
+	flag.StringVar(&sqls, "sql", "select * from test", "sql to execute")
+	flag.Parse()
+
+	latencyC = make(chan float64, 10240)
+	throughputC = make(chan int, 10240)
+
+}
 
 func printStatistics() {
 	fmt.Println("query sum:", num)
@@ -32,15 +51,17 @@ func printStatistics() {
 
 func execute(wg *sync.WaitGroup) {
 	defer wg.Done()
-	db, err := sql.Open("mysql", *addr)
+	db, err := sql.Open("mysql", addr)
 	defer db.Close()
 	if err != nil {
 		panic(err)
 	}
 	start := time.Now()
-	_, err = db.Query(*sqls)
+	_, err = db.Query(sqls)
 	if err != nil {
-		fmt.Println("query err:", err)
+		// fmt.Println("query err:", err)
+		logger.Println("query err:", err)
+
 		l.Lock()
 		limited = limited + 1
 		l.Unlock()
@@ -56,7 +77,10 @@ func execute(wg *sync.WaitGroup) {
 	}
 	l.Unlock()
 
-	fmt.Println("Query took %s", elapsed)
+	addCount(1)
+	addLatency(elapsedSec)
+
+	logger.Printf("Query took %s\n", elapsed)
 }
 
 func handleChannel() {
@@ -69,15 +93,57 @@ func handleChannel() {
 	}()
 }
 
+func addCount(c int) {
+	throughputC <- c
+}
+
+func addLatency(d float64) {
+	latencyC <- d
+}
+
+func showStatitistic() {
+	ticker := time.Tick(10 * time.Second)
+	var total, last int
+	var totalElapsed, lastElapsed float64
+	for {
+		select {
+		case count := <-throughputC:
+			total += int(count)
+			if count < 0 {
+				break
+			}
+		case elapsed := <-latencyC:
+			totalElapsed += elapsed
+
+		case <-ticker:
+			qps := float64(total-last) / 10.0
+			avgLatency := (totalElapsed - lastElapsed) / 10.0
+			last = total
+			lastElapsed = totalElapsed
+			fmt.Printf("%0.2f\tQPS, total: %v\n", qps, total)
+			fmt.Printf("%0.2f\tAvgLatency per sec, total: %v\n", totalElapsed, avgLatency)
+		}
+	}
+}
+
 func main() {
-	flag.Parse()
-	fmt.Println("mysql addr:", *addr)
-	fmt.Println("proc number:", *proc)
-	fmt.Println("sql to execute:", *sqls)
+
+	fmt.Println("mysql addr:", addr)
+	fmt.Println("proc number:", proc)
+	fmt.Println("sql to execute:", sqls)
+
+	logfile, err := os.Create("./mysql-stress.log")
+	if err != nil && err != os.ErrExist {
+		fmt.Println(err)
+		return
+	}
+	logger = log.New(logfile, "[stats]", log.Lshortfile|log.LstdFlags)
+
 	handleChannel()
+	go showStatitistic()
 	var wg sync.WaitGroup
 	for {
-		for i := 0; i < *proc; i++ {
+		for i := 0; i < proc; i++ {
 			wg.Add(1)
 			go execute(&wg)
 		}
